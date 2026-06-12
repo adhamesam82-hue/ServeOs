@@ -6,16 +6,20 @@
 
 **Architecture:** A single Next.js (App Router) app serves three host-based surfaces (storefront `{slug}.serveos.com`, dashboard `app.`, admin `admin.`). All business logic lives in framework-agnostic server modules under `src/server/<domain>/`, each exposing a service interface and owning its Drizzle schema. Tenant data is isolated in one Postgres database via a `tenant_id` column plus FORCE Row-Level Security, enforced by a `withTenant()` transaction wrapper that sets `app.tenant_id`.
 
-**Tech Stack:** Next.js 15 (App Router) · TypeScript · PostgreSQL · Drizzle ORM · `pg` · Vitest (unit/integration) · Playwright (E2E) · Node `crypto.scrypt` (password hashing) · custom cookie sessions.
+**Tech Stack:** Next.js 15 (App Router) · TypeScript · PostgreSQL (**Supabase**, cloud) · Drizzle ORM · `pg` · Vitest (unit/integration) · Playwright (E2E) · Node `crypto.scrypt` (password hashing) · custom cookie sessions.
 
 **Spec:** `docs/adham-ai/specs/2026-06-13-serveos-tenant-subscription-core-design.md`
+
+> **Database provider — Supabase (cloud).** Postgres is hosted on a Supabase project, used purely as a Postgres host via a connection string (Drizzle migrations + queries). We do **not** use Supabase Auth or PostgREST — auth is self-hosted (Auth.js-style sessions in this plan) per the spec. Use the **direct connection** (`db.<ref>.supabase.co:5432`, database `postgres`), NOT the transaction pooler on `:6543` — the `withTenant` transaction wrapper and Drizzle migrations require a session/direct connection. A separate `serveos_test` database lives in the **same** project for the truncate-between-tests harness. Connection strings live only in gitignored `.env.local` (dev → `postgres` db) and `.env.test` (test → `serveos_test` db); never commit them.
+>
+> **RLS role caveat:** if the connection role has the `BYPASSRLS` attribute, FORCE RLS isolation tests (Task 5) will not isolate. The Supabase `postgres` role is not a superuser, but verify during Task 5: run `SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user;` — it must be `false`. If it is `true`, create and connect as a dedicated `app` role: `CREATE ROLE app LOGIN PASSWORD '...' NOBYPASSRLS; GRANT ALL ON ALL TABLES IN SCHEMA public TO app;` and use that role's connection string instead.
 
 ---
 
 ## Conventions used throughout this plan
 
 - **TDD:** failing test → run (red) → minimal code → run (green) → commit.
-- **Test DB:** integration tests run against a real Postgres named `serveos_test` (RLS cannot be tested with mocks). A global setup truncates tables between tests.
+- **Test DB:** integration tests run against the `serveos_test` database on Supabase (RLS cannot be tested with mocks). The Vitest `globalSetup` loads `.env.test` and **auto-applies migrations** to the test DB before the suite, then truncates tables between tests. Therefore, after generating a migration you do NOT run a separate test-migrate command — just run the relevant test and it migrates first. A `db:migrate:test` script exists for manual/explicit runs.
 - **Module boundary:** code in `src/app/` (routes/actions) only imports from a domain's `index.ts` service export, never from another domain's internals.
 - **Commit style:** Conventional Commits. Commit after every green step group.
 - **Path alias:** `@/` → `src/`.
@@ -26,7 +30,6 @@
 
 ```
 serveos/
-├─ docker-compose.yml                      # local Postgres
 ├─ drizzle.config.ts                       # Drizzle Kit config
 ├─ vitest.config.ts                        # unit + integration runner
 ├─ playwright.config.ts                    # E2E runner
@@ -127,10 +130,12 @@ git commit -m "chore: scaffold Next.js app with Drizzle and Vitest tooling"
 
 ---
 
-### Task 2: Local Postgres + env validation
+### Task 2: Supabase Postgres + env validation
 
 **Files:**
-- Create: `docker-compose.yml`, `.env.local`, `.env.test`, `src/env.ts`, `src/env.test.ts`
+- Create: `.env.local`, `.env.test`, `src/env.ts`, `src/env.test.ts`
+
+> **Prerequisite (controller-provided):** the Supabase **direct** connection string and a `serveos_test` database created in the same project. The controller writes `.env.local` and `.env.test` with the real connection strings (gitignored). Steps 5–7 below assume those files already exist; if you (the implementer) do not see them, report NEEDS_CONTEXT.
 
 - [ ] **Step 1: Write the failing test for env validation**
 
@@ -181,50 +186,34 @@ export const env = (): Env => loadEnv();
 Run: `npx vitest run src/env.test.ts`
 Expected: PASS (2 tests).
 
-- [ ] **Step 5: Create `docker-compose.yml`**
+- [ ] **Step 5: Confirm env files exist (controller-provided) and are gitignored**
 
-```yaml
-services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: serveos
-      POSTGRES_PASSWORD: serveos
-      POSTGRES_DB: serveos
-    ports: ["5432:5432"]
-    volumes: ["serveos_pgdata:/var/lib/postgresql/data"]
-volumes:
-  serveos_pgdata:
-```
-
-- [ ] **Step 6: Create env files**
-
+The controller has written (do NOT commit these — they contain the Supabase password):
 `.env.local`:
 ```
-DATABASE_URL=postgres://serveos:serveos@localhost:5432/serveos
+DATABASE_URL=postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres
 ROOT_DOMAIN=serveos.localhost
 ```
 `.env.test`:
 ```
-DATABASE_URL=postgres://serveos:serveos@localhost:5432/serveos_test
+DATABASE_URL=postgresql://postgres:<password>@db.<ref>.supabase.co:5432/serveos_test
 ROOT_DOMAIN=serveos.localhost
 ```
-Confirm `.env*` is in `.gitignore` (create-next-app adds it).
+Verify `.env*` is in `.gitignore` (create-next-app adds it; if `.env.local`/`.env.test` are not covered, add them). Run `git status` and confirm neither env file is staged.
 
-- [ ] **Step 7: Start Postgres and create the test DB**
+- [ ] **Step 6: Verify connectivity to both databases**
 
 ```bash
-docker compose up -d
-sleep 3
-docker compose exec -T db psql -U serveos -d serveos -c "CREATE DATABASE serveos_test;" || true
+node -e "const {Pool}=require('pg');require('dotenv').config({path:'.env.local'});new Pool({connectionString:process.env.DATABASE_URL}).query('select 1').then(()=>{console.log('dev ok');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)})"
+node -e "const {Pool}=require('pg');require('dotenv').config({path:'.env.test'});new Pool({connectionString:process.env.DATABASE_URL}).query('select 1').then(()=>{console.log('test ok');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)})"
 ```
-Expected: `CREATE DATABASE` (or "already exists").
+Expected: `dev ok` then `test ok`. If the test DB connection fails with `database "serveos_test" does not exist`, the controller must create it first (`CREATE DATABASE serveos_test;` via the direct connection to the `postgres` db).
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit (code only — never the env files)**
 
 ```bash
-git add -A
-git commit -m "chore: add local Postgres and validated env loader"
+git add src/env.ts src/env.test.ts
+git commit -m "chore: add validated env loader for Supabase Postgres"
 ```
 
 ---
@@ -255,13 +244,14 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
 
-const url =
-  process.env.NODE_ENV === "test"
-    ? process.env.DATABASE_URL?.replace(/\/serveos$/, "/serveos_test") ??
-      process.env.DATABASE_URL!
-    : process.env.DATABASE_URL!;
+// DATABASE_URL is loaded from the correct env file per environment:
+// dev/build → .env.local (Next.js), tests → .env.test (Vitest globalSetup/setup),
+// scripts → whichever dotenv file the script loads. No string munging.
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is not set — check .env.local / .env.test");
+}
 
-export const pool = new Pool({ connectionString: url });
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool, { schema });
 export type DB = typeof db;
 ```
@@ -275,8 +265,10 @@ export {};
 
 - [ ] **Step 4: Create the migrator `scripts/migrate.ts`**
 
+Loads the env file named by `ENV_FILE` (defaults to `.env.local`) BEFORE importing the db client, so the connection points at the right database.
 ```typescript
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: process.env.ENV_FILE ?? ".env.local", override: true });
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 
@@ -289,6 +281,10 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+```
+Add the test-migrate script to `package.json` `"scripts"` (the dev `db:migrate` was added in Task 1):
+```json
+"db:migrate:test": "ENV_FILE=.env.test tsx scripts/migrate.ts"
 ```
 
 - [ ] **Step 5: Create the test global setup `src/db/test-global-setup.ts`**
@@ -429,7 +425,7 @@ export * from "@/server/tenancy/schema";
 
 ```bash
 npm run db:generate
-DATABASE_URL=postgres://serveos:serveos@localhost:5432/serveos_test npm run db:migrate
+npm run db:migrate:test
 ```
 Expected: a new file under `drizzle/` and `migrations applied`.
 
@@ -548,7 +544,7 @@ export async function withTenant<T>(tenantId: string, fn: (tx: Tx) => Promise<T>
 - [ ] **Step 6: Apply migration and run tests — expect pass**
 
 ```bash
-DATABASE_URL=postgres://serveos:serveos@localhost:5432/serveos_test npm run db:migrate
+npm run db:migrate:test
 npx vitest run src/db/with-tenant.test.ts
 ```
 Expected: PASS (2 tests). If "policy already exists" appears, the SQL ran twice — `DROP POLICY IF EXISTS` before `CREATE POLICY` to make it idempotent.
@@ -881,7 +877,7 @@ export * from "@/server/auth/schema";
 
 ```bash
 npm run db:generate
-DATABASE_URL=postgres://serveos:serveos@localhost:5432/serveos_test npm run db:migrate
+npm run db:migrate:test
 ```
 
 - [ ] **Step 6: Run test — expect pass**
@@ -1360,7 +1356,7 @@ export * from "@/server/billing/schema";
 
 ```bash
 npm run db:generate
-DATABASE_URL=postgres://serveos:serveos@localhost:5432/serveos_test npm run db:migrate
+npm run db:migrate:test
 npx vitest run src/server/subscription/schema.test.ts
 ```
 Expected: PASS.
@@ -1999,7 +1995,7 @@ export * from "@/server/platform/audit.schema";
 
 ```bash
 npm run db:generate
-DATABASE_URL=postgres://serveos:serveos@localhost:5432/serveos_test npm run db:migrate
+npm run db:migrate:test
 npx vitest run src/server/onboarding/schema.test.ts
 ```
 Expected: PASS.
@@ -2798,7 +2794,8 @@ git commit -m "feat(admin): approval queue with super-admin guard"
 - [ ] **Step 1: Implement `scripts/seed.ts`**
 
 ```typescript
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: process.env.ENV_FILE ?? ".env.local", override: true });
 import { db, pool } from "../src/db/client";
 import { users, roles, userRoles } from "../src/server/auth/schema";
 import { hashPassword } from "../src/server/auth/password";
@@ -2964,12 +2961,13 @@ Multi-tenant foundation: tenancy + RLS, auth + RBAC, plans/entitlements, manual
 billing, onboarding + admin approval, and per-tenant installable PWA storefronts.
 
 ## Local setup
-1. `docker compose up -d` then create the test DB:
-   `docker compose exec -T db psql -U serveos -d serveos -c "CREATE DATABASE serveos_test;"`
-2. `npm install`
-3. `npm run db:migrate` (dev DB)
-4. `npm run db:seed`
-5. `npm run dev`
+1. Create a Supabase project. Copy the **direct** connection string (`db.<ref>.supabase.co:5432`).
+   Create the test database once: connect to the `postgres` db and run `CREATE DATABASE serveos_test;`.
+2. Create `.env.local` (db `postgres`) and `.env.test` (db `serveos_test`) with `DATABASE_URL` + `ROOT_DOMAIN`. These are gitignored — never commit them.
+3. `npm install`
+4. `npm run db:migrate` (dev DB) and `npm run db:migrate:test` (test DB)
+5. `npm run db:seed`
+6. `npm run dev`
 
 Hosts (add to /etc/hosts for local subdomains):
 - `app.serveos.localhost` — dashboard (register/login)
