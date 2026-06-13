@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, pgEnum, jsonb } from "drizzle-orm/pg-core";
 
 export const tenantStatus = pgEnum("tenant_status", [
   "onboarding",
@@ -26,3 +26,10 @@ export const tenants = pgTable("tenants", {
 
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
+
+export const tenantSettings = pgTable("tenant_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  data: jsonb("data").notNull().default({}),
+});
+export type TenantSettings = typeof tenantSettings.$inferSelect;
