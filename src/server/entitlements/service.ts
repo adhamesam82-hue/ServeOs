@@ -35,10 +35,20 @@ const METRIC_LIMIT: Record<string, keyof PlanLimits> = {
 export async function checkUsage(tenantId: string, metric: "orders" | "messages"): Promise<void> {
   const plan = await planOrThrow(tenantId);
   const limit = plan.limits[METRIC_LIMIT[metric]];
+  // Scope to the current billing period (first day of this month). Usage writers
+  // (added in a later sub-project) must increment the row keyed by this periodStart.
+  const now = new Date();
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const [row] = await db
     .select()
     .from(usageCounters)
-    .where(and(eq(usageCounters.tenantId, tenantId), eq(usageCounters.metric, metric)))
+    .where(
+      and(
+        eq(usageCounters.tenantId, tenantId),
+        eq(usageCounters.metric, metric),
+        eq(usageCounters.periodStart, periodStart),
+      ),
+    )
     .limit(1);
   const used = row?.count ?? 0;
   if (used >= limit) throw new QuotaExceededError(metric, limit, used);

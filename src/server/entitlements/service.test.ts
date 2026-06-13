@@ -37,6 +37,17 @@ describe("entitlements", () => {
     await expect(checkUsage(t.id, "orders")).rejects.toBeInstanceOf(QuotaExceededError);
   });
 
+  it("ignores usage counters from previous periods", async () => {
+    const t = await basicTenant(); // orders_per_month = 200
+    await db.insert(usageCounters).values({
+      tenantId: t.id,
+      metric: "orders",
+      periodStart: new Date(new Date().getFullYear() - 1, 0, 1), // last year
+      count: 999,
+    });
+    await expect(checkUsage(t.id, "orders")).resolves.toBeUndefined();
+  });
+
   it("localizes error messages in English and Arabic", async () => {
     const err = new QuotaExceededError("branches", 1, 1);
     expect(err.messageFor("en")).toMatch(/branches/i);
