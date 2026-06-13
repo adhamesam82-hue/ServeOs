@@ -1,0 +1,30 @@
+import { listPendingApplications } from "@/server/platform";
+import { approveAction, rejectAction } from "./actions";
+
+export default async function AdminQueue() {
+  const pending = await listPendingApplications();
+  return (
+    <main style={{ padding: 48, fontFamily: "system-ui" }}>
+      <h1>Pending restaurants</h1>
+      {pending.length === 0 && <p>No pending applications.</p>}
+      <ul style={{ display: "grid", gap: 16, listStyle: "none", padding: 0 }}>
+        {pending.map((p) => (
+          <li key={p.applicationId} style={{ border: "1px solid #ddd", padding: 16 }}>
+            <strong>{p.tenantName}</strong> — {p.slug}.serveos.com
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <form action={approveAction}>
+                <input type="hidden" name="tenantId" value={p.tenantId} />
+                <button type="submit">Approve</button>
+              </form>
+              <form action={rejectAction}>
+                <input type="hidden" name="tenantId" value={p.tenantId} />
+                <input name="notes" placeholder="Reason" />
+                <button type="submit">Reject</button>
+              </form>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </main>
+  );
+}
