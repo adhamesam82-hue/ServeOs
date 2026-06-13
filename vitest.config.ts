@@ -8,6 +8,8 @@ export default defineConfig({
     globalSetup: ["./src/db/test-global-setup.ts"],
     setupFiles: ["./src/db/test-setup.ts"],
     fileParallelism: false,
+    testTimeout: 30000,
+    hookTimeout: 30000,
     env: { NODE_ENV: "test" },
   },
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },

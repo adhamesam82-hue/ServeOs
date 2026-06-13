@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ServeOS — Tenant & Subscription Core
 
-## Getting Started
+Multi-tenant SaaS foundation for ServeOS: tenancy with Postgres Row-Level Security,
+self-hosted auth + RBAC, plans/entitlements, manual billing behind a provider
+interface, restaurant onboarding with admin approval, and per-tenant installable
+PWA storefronts. Built on Next.js (App Router) + Drizzle + Supabase Postgres.
 
-First, run the development server:
+## Surfaces (host-based routing via `src/proxy.ts`)
+- `{slug}.serveos.com` — tenant storefront (installable PWA)
+- `app.serveos.com` — restaurant dashboard (`/register`, `/login`)
+- `admin.serveos.com` — platform admin approval queue (`/admin`)
+- bare root — marketing placeholder
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Local hosts use `.localhost` (e.g. `roma.serveos.localhost`). For browser testing of
+subdomains locally, add entries to `/etc/hosts` (e.g. `127.0.0.1 roma.serveos.localhost`).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
+1. Create a Supabase project. Copy the **direct/session** connection string.
+   Create the test database once (connect to the `postgres` db and run `CREATE DATABASE serveos_test;`).
+2. Create `.env.local` (db `postgres`) and `.env.test` (db `serveos_test`), each with:
+   ```
+   DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<db>
+   ROOT_DOMAIN=serveos.localhost
+   ```
+   Both files are gitignored — never commit them. RLS isolation requires the DB role to be `NOBYPASSRLS`.
+3. `npm install`
+4. `npm run db:migrate` (dev DB) and `npm run db:migrate:test` (test DB)
+5. `npm run db:seed` — creates platform admin `admin@serveos.com` / `admin1234`, demo restaurant owner `owner@roma.com` / `owner1234`, and a live `roma` storefront.
+6. `npm run dev`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Testing
+- `npm run test` — unit + integration (Vitest; needs the `serveos_test` Supabase DB)
+- `npm run test:e2e` — Playwright smoke test (storefront PWA manifest + branding)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Architecture
+Business logic lives in framework-agnostic modules under `src/server/<domain>/`
+(tenancy, auth, rbac, subscription, entitlements, billing, onboarding, platform),
+each exposing a service via its `index.ts` barrel. Tenant data is isolated by a
+`tenant_id` column plus FORCE Row-Level Security, enforced through the
+`withTenant()` transaction wrapper. Plan limits are enforced through the single
+`entitlements` gate. Subscription billing is abstracted behind `BillingProvider`
+(manual now; payment gateways later).
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Out of scope (later sub-projects)
+Menu/catalog, ordering/checkout, payment gateways, WhatsApp commerce, reservations,
+customer accounts, analytics. Cross-channel orders (web + WhatsApp) will surface in a
+single unified dashboard order list — see the design spec.
