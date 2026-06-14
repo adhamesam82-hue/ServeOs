@@ -1,8 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireDashboardUser } from "@/server/auth/dashboard-context";
-import { authorize } from "@/server/rbac/authorize";
+import { requireMenuPermission } from "../../menu-permission";
 import {
   createProduct,
   updateProduct,
@@ -14,14 +13,8 @@ import {
   setBranchAvailability,
 } from "@/server/catalog/service";
 
-async function getCtx() {
-  const ctx = await requireDashboardUser();
-  authorize(ctx.roleKeys, "menu:manage");
-  return ctx;
-}
-
 export async function createProductAction(formData: FormData) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   await createProduct(tenantId, {
     categoryId: String(formData.get("categoryId")),
     nameEn: String(formData.get("nameEn")),
@@ -35,7 +28,7 @@ export async function createProductAction(formData: FormData) {
 }
 
 export async function updateProductAction(productId: string, formData: FormData) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   const isPublished = formData.get("isPublished") === "true";
   await updateProduct(tenantId, productId, {
     nameEn: String(formData.get("nameEn")),
@@ -50,14 +43,14 @@ export async function updateProductAction(productId: string, formData: FormData)
 }
 
 export async function deleteProductAction(productId: string) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   await deleteProduct(tenantId, productId);
   revalidatePath("/dashboard/menu");
   redirect("/dashboard/menu");
 }
 
 export async function upsertModifierGroupAction(productId: string, formData: FormData) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   await upsertModifierGroup(tenantId, productId, {
     id: formData.get("id") ? String(formData.get("id")) : undefined,
     nameEn: String(formData.get("nameEn")),
@@ -70,13 +63,13 @@ export async function upsertModifierGroupAction(productId: string, formData: For
 }
 
 export async function deleteModifierGroupAction(productId: string, groupId: string) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   await deleteModifierGroup(tenantId, groupId);
   revalidatePath(`/dashboard/menu/products/${productId}`);
 }
 
 export async function upsertModifierOptionAction(productId: string, groupId: string, formData: FormData) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   await upsertModifierOption(tenantId, groupId, {
     id: formData.get("id") ? String(formData.get("id")) : undefined,
     nameEn: String(formData.get("nameEn")),
@@ -87,7 +80,7 @@ export async function upsertModifierOptionAction(productId: string, groupId: str
 }
 
 export async function deleteModifierOptionAction(productId: string, optionId: string) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   await deleteModifierOption(tenantId, optionId);
   revalidatePath(`/dashboard/menu/products/${productId}`);
 }
@@ -98,7 +91,7 @@ export async function setBranchAvailabilityAction(
   available: boolean,
   priceOverride?: number,
 ) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   await setBranchAvailability(tenantId, branchId, productId, available, priceOverride);
   revalidatePath(`/dashboard/menu/products/${productId}`);
 }

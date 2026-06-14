@@ -1,18 +1,11 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireDashboardUser } from "@/server/auth/dashboard-context";
-import { authorize } from "@/server/rbac/authorize";
+import { requireMenuPermission } from "../../menu-permission";
 import { createCategory, updateCategory, deleteCategory } from "@/server/catalog/service";
 
-async function getCtx() {
-  const ctx = await requireDashboardUser();
-  authorize(ctx.roleKeys, "menu:manage");
-  return ctx;
-}
-
 export async function createCategoryAction(formData: FormData) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   await createCategory(tenantId, {
     nameEn: String(formData.get("nameEn")),
     nameAr: String(formData.get("nameAr")),
@@ -24,7 +17,7 @@ export async function createCategoryAction(formData: FormData) {
 }
 
 export async function updateCategoryAction(categoryId: string, formData: FormData) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   await updateCategory(tenantId, categoryId, {
     nameEn: String(formData.get("nameEn")),
     nameAr: String(formData.get("nameAr")),
@@ -34,7 +27,7 @@ export async function updateCategoryAction(categoryId: string, formData: FormDat
 }
 
 export async function deleteCategoryAction(categoryId: string) {
-  const { tenantId } = await getCtx();
+  const { tenantId } = await requireMenuPermission();
   await deleteCategory(tenantId, categoryId);
   revalidatePath("/dashboard/menu");
 }
