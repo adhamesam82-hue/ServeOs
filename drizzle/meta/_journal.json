@@ -50,6 +50,13 @@
       "when": 1781389506827,
       "tag": "0006_simple_quentin_quire",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781452223528,
+      "tag": "0007_bitter_mandarin",
+      "breakpoints": true
     }
   ]
 }
