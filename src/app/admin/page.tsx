@@ -1,7 +1,18 @@
 import { listPendingApplications } from "@/server/platform";
+import { requireSuperAdmin } from "@/server/auth/admin-context";
 import { approveAction, rejectAction } from "./actions";
 
 export default async function AdminQueue() {
+  try {
+    await requireSuperAdmin();
+  } catch {
+    return (
+      <main style={{ padding: 48, fontFamily: "system-ui" }}>
+        <h1>Unauthorized</h1>
+        <p>You must be signed in as a platform administrator to view this page.</p>
+      </main>
+    );
+  }
   const pending = await listPendingApplications();
   return (
     <main style={{ padding: 48, fontFamily: "system-ui" }}>
