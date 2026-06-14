@@ -4,4 +4,5 @@ export {
   resolveTenantByHost,
   subdomainFromHost,
   getTenantBySlug,
+  isTenantServable,
 } from "./service";

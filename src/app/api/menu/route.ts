@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTenantBySlug } from "@/server/tenancy";
+import { getTenantBySlug, isTenantServable } from "@/server/tenancy";
 import { getPublishedMenu } from "@/server/catalog/service";
 
 export async function GET(req: NextRequest) {
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   }
 
   const tenant = await getTenantBySlug(slug);
-  if (!tenant || !["active", "trial"].includes(tenant.status)) {
+  if (!tenant || !isTenantServable(tenant)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

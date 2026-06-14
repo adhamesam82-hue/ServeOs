@@ -1,10 +1,15 @@
 import { headers } from "next/headers";
-import { getTenantBySlug } from "@/server/tenancy";
+import { getTenantBySlug, isTenantServable } from "@/server/tenancy";
 import { getPublishedMenu } from "@/server/catalog/service";
 import { getActiveBanners } from "@/server/banners/service";
 import { listBranches } from "@/server/branches/service";
+import { BranchSelector } from "./_components/BranchSelector";
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ branch?: string }>;
+}) {
   const h = await headers();
   const surface = h.get("x-surface");
   const slug = h.get("x-tenant-slug");
@@ -14,7 +19,7 @@ export default async function Home() {
     if (!tenant) {
       return <main style={{ padding: 48, fontFamily: "system-ui" }}><h1>Restaurant not found</h1></main>;
     }
-    if (!["active", "trial"].includes(tenant.status)) {
+    if (!isTenantServable(tenant)) {
       return (
         <main style={{ padding: 48, fontFamily: "system-ui" }}>
           <h1>{tenant.name}</h1>
@@ -23,9 +28,11 @@ export default async function Home() {
       );
     }
 
+    const { branch: branchId } = await searchParams;
+
     const [banners, menu, branches] = await Promise.all([
       getActiveBanners(tenant.id),
-      getPublishedMenu(tenant.id),
+      getPublishedMenu(tenant.id, branchId),
       listBranches(tenant.id),
     ]);
 
@@ -43,12 +50,7 @@ export default async function Home() {
 
         {branches.length > 1 && (
           <section style={{ padding: "8px 24px" }}>
-            <label>Branch: {" "}
-              <select id="branch-select">
-                <option value="">All branches</option>
-                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </label>
+            <BranchSelector branches={branches} currentBranchId={branchId} />
           </section>
         )}
 

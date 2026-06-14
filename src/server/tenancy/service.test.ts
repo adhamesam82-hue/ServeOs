@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/db/client";
 import { tenants } from "./schema";
-import { resolveTenantByHost, createTenant } from "./service";
+import { resolveTenantByHost, createTenant, isTenantServable } from "./service";
 
 describe("tenancy service", () => {
   it("creates a tenant with defaults", async () => {
@@ -40,5 +40,18 @@ describe("tenancy service", () => {
     expect(subdomainFromHost("www.serveos.localhost", "serveos.localhost")).toBeNull();
     expect(subdomainFromHost("a.b.serveos.localhost", "serveos.localhost")).toBeNull();
     expect(subdomainFromHost("ROMA.serveos.localhost", "serveos.localhost")).toBe("roma");
+  });
+});
+
+describe("isTenantServable", () => {
+  it("returns true for active and trial", () => {
+    expect(isTenantServable({ status: "active" })).toBe(true);
+    expect(isTenantServable({ status: "trial" })).toBe(true);
+  });
+
+  it("returns false for all other statuses", () => {
+    expect(isTenantServable({ status: "onboarding" })).toBe(false);
+    expect(isTenantServable({ status: "suspended" })).toBe(false);
+    expect(isTenantServable({ status: "rejected" })).toBe(false);
   });
 });
