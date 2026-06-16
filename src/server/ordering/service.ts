@@ -117,7 +117,9 @@ export async function placeOrder(tenantId: string, input: PlaceOrderInput): Prom
     const vatAmount = subtotal * (vatRate / 100);
     const total = subtotal + vatAmount + deliveryFee;
 
-    // 5. Order number (per-tenant max+1, under the advisory lock above)
+    // 5. Order number (per-tenant max+1, under the advisory lock above). No
+    // explicit tenant filter needed: FORCE RLS scopes this MAX to the tenant
+    // via app.tenant_id (set by withTenant), same as every other query here.
     const [{ next }] = await tx.select({ next: sql<number>`COALESCE(MAX(${orders.orderNumber}), 0) + 1` }).from(orders);
     const orderNumber = Number(next);
     const statusToken = randomUUID();
@@ -138,7 +140,9 @@ export async function placeOrder(tenantId: string, input: PlaceOrderInput): Prom
     return { orderId: order.id, orderNumber, statusToken };
   });
 
-  // Meter usage (control table, outside the tenant tx). No hard cap in v1.
+  // Meter usage (control table, outside the tenant tx). By design (spec §2)
+  // there is NO hard cap in v1 — orders/month is recorded for visibility only,
+  // so checkUsage is intentionally not enforced at placement.
   await incrementUsage(tenantId, "orders");
   return result;
 }

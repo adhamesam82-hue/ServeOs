@@ -11,6 +11,7 @@ function toMinutes(hhmm: string): number {
  * the caller's responsibility; v1 uses server-local time (documented limitation).
  */
 export function isBranchOrderable(branch: Branch, now: Date): boolean {
+  if (!branch.isActive) return false; // soft-deleted / decommissioned branch
   if (!branch.acceptingOrders) return false;
   const hours = branch.openingHours ?? [];
   if (hours.length === 0) return true; // no schedule configured → open

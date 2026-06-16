@@ -19,6 +19,9 @@ describe("isBranchOrderable", () => {
   it("false when acceptingOrders is off", () => {
     expect(isBranchOrderable(branch({ acceptingOrders: false }), tue14)).toBe(false);
   });
+  it("false when the branch is inactive (soft-deleted)", () => {
+    expect(isBranchOrderable(branch({ isActive: false }), tue14)).toBe(false);
+  });
   it("true when openingHours empty (no schedule) and toggle on", () => {
     expect(isBranchOrderable(branch({ openingHours: [] }), tue14)).toBe(true);
   });

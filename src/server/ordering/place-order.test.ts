@@ -86,4 +86,40 @@ describe("placeOrder", () => {
     expect(a.orderNumber).toBe(1);
     expect(b.orderNumber).toBe(2);
   });
+
+  it("rejects a modifier option that belongs to another product", async () => {
+    const { t, branch, pizza } = await setup("po7");
+    const { OrderValidationError } = await import("./errors");
+    const cat2 = await createCategory(t.id, { nameEn: "Drinks", nameAr: "مشروبات" });
+    const cola = await createProduct(t.id, { nameEn: "Cola", nameAr: "كولا", basePrice: "20", categoryId: cat2.id });
+    await updateProduct(t.id, cola.id, { isPublished: true });
+    const g2 = await upsertModifierGroup(t.id, cola.id, { nameEn: "Size", nameAr: "حجم", required: false, minSelections: 0, maxSelections: 1 });
+    const large = await upsertModifierOption(t.id, g2.id, { nameEn: "Large", nameAr: "كبير", priceDelta: "5" });
+    await expect(placeOrder(t.id, {
+      branchId: branch.id, fulfillmentType: "pickup", customerName: "A", customerPhone: "1",
+      lines: [{ productId: pizza.id, quantity: 1, selectedOptionIds: [large.id] }],
+    })).rejects.toThrow(OrderValidationError);
+  });
+
+  it("rejects a delivery area that belongs to another branch", async () => {
+    const { t, branch, pizza } = await setup("po8");
+    const { AreaNotDeliverableError } = await import("./errors");
+    const branch2 = await createBranch(t.id, { name: "Second" });
+    const foreignArea = await createDeliveryArea(t.id, branch2.id, { nameEn: "Other", nameAr: "أخرى", deliveryFee: "10", minOrderAmount: "0" });
+    await expect(placeOrder(t.id, {
+      branchId: branch.id, fulfillmentType: "delivery", customerName: "A", customerPhone: "1",
+      areaId: foreignArea.id, addressText: "x", lines: [{ productId: pizza.id, quantity: 1, selectedOptionIds: [] }],
+    })).rejects.toThrow(AreaNotDeliverableError);
+  });
+
+  it("rejects when the branch is inactive (soft-deleted)", async () => {
+    const { t, branch, pizza } = await setup("po9");
+    const { BranchNotAcceptingOrdersError } = await import("./errors");
+    const { deleteBranch } = await import("@/server/branches/service");
+    await deleteBranch(t.id, branch.id);
+    await expect(placeOrder(t.id, {
+      branchId: branch.id, fulfillmentType: "pickup", customerName: "A", customerPhone: "1",
+      lines: [{ productId: pizza.id, quantity: 1, selectedOptionIds: [] }],
+    })).rejects.toThrow(BranchNotAcceptingOrdersError);
+  });
 });
