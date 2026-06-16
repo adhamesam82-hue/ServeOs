@@ -1,4 +1,4 @@
-export { branches, type Branch, type NewBranch } from "./schema";
+export { branches, deliveryAreas, type Branch, type NewBranch, type DeliveryArea, type NewDeliveryArea, type OpeningHours, type DayHours } from "./schema";
 export { BranchNotFoundError } from "./errors";
 export {
   listBranches,

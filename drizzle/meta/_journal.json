@@ -57,6 +57,13 @@
       "when": 1781452223528,
       "tag": "0007_bitter_mandarin",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781578064111,
+      "tag": "0008_daily_slapstick",
+      "breakpoints": true
     }
   ]
 }
