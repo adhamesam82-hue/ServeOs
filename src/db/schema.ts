@@ -8,3 +8,4 @@ export * from "../server/platform/audit.schema";
 export * from "../server/branches/schema";
 export * from "../server/catalog/schema";
 export * from "../server/banners/schema";
+export * from "../server/ordering/schema";
