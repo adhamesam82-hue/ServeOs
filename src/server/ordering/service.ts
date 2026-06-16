@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { withTenant } from "@/db/with-tenant";
 import { requireFeature, incrementUsage } from "@/server/entitlements/service";
 import { getVatRate } from "@/server/tenancy/settings";
 import { isBranchOrderable } from "@/server/branches/orderability";
 import { branches, deliveryAreas } from "@/server/branches/schema";
 import { products, modifierGroups, modifierOptions, branchProductAvailability } from "@/server/catalog/schema";
-import { orders, orderItems, orderStatusEvents, type SelectedModifier } from "./schema";
-import { OrderValidationError, BranchNotAcceptingOrdersError, AreaNotDeliverableError, MinimumOrderNotMetError } from "./errors";
+import { orders, orderItems, orderStatusEvents, type SelectedModifier, type Order, type OrderWithItems, type OrderDetail, type OrderStatus } from "./schema";
+import { canTransition } from "./state-machine";
+import { OrderValidationError, BranchNotAcceptingOrdersError, AreaNotDeliverableError, MinimumOrderNotMetError, OrderNotFoundError, InvalidTransitionError } from "./errors";
 
 export type PlaceOrderLine = { productId: string; quantity: number; selectedOptionIds: string[] };
 export type PlaceOrderInput = {
@@ -145,4 +146,67 @@ export async function placeOrder(tenantId: string, input: PlaceOrderInput): Prom
   // so checkUsage is intentionally not enforced at placement.
   await incrementUsage(tenantId, "orders");
   return result;
+}
+
+export async function getOrderByToken(tenantId: string, token: string): Promise<OrderWithItems | null> {
+  return withTenant(tenantId, async (tx) => {
+    const [order] = await tx.select().from(orders).where(eq(orders.statusToken, token)).limit(1);
+    if (!order) return null;
+    const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+    return { ...order, items };
+  });
+}
+
+export async function getOrder(tenantId: string, orderId: string): Promise<OrderDetail> {
+  return withTenant(tenantId, async (tx) => {
+    const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+    if (!order) throw new OrderNotFoundError();
+    const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+    const events = await tx.select().from(orderStatusEvents).where(eq(orderStatusEvents.orderId, orderId)).orderBy(orderStatusEvents.createdAt);
+    return { ...order, items, events };
+  });
+}
+
+export type ListOrdersOpts = { branchId?: string; status?: OrderStatus; limit?: number };
+
+export async function listOrders(tenantId: string, opts: ListOrdersOpts): Promise<Order[]> {
+  return withTenant(tenantId, (tx) => {
+    const conds = [];
+    if (opts.branchId) conds.push(eq(orders.branchId, opts.branchId));
+    if (opts.status) conds.push(eq(orders.status, opts.status));
+    const base = tx.select().from(orders);
+    const q = conds.length > 0 ? base.where(and(...conds)) : base;
+    return q.orderBy(desc(orders.placedAt)).limit(opts.limit ?? 100);
+  });
+}
+
+export async function pendingOrderCount(tenantId: string): Promise<number> {
+  const [row] = await withTenant(tenantId, (tx) =>
+    tx.select({ c: sql<number>`COUNT(*)` }).from(orders).where(eq(orders.status, "pending")),
+  );
+  return Number(row.c);
+}
+
+export async function transitionStatus(tenantId: string, orderId: string, to: OrderStatus, userId: string, reason?: string): Promise<Order> {
+  return withTenant(tenantId, async (tx) => {
+    const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+    if (!order) throw new OrderNotFoundError();
+    if (!canTransition(order.status, to, order.fulfillmentType)) throw new InvalidTransitionError(order.status, to);
+    const setCancel = (to === "cancelled" || to === "rejected") && reason ? { cancelReason: reason } : {};
+    const [updated] = await tx.update(orders)
+      .set({ status: to, updatedAt: new Date(), ...setCancel })
+      .where(eq(orders.id, orderId)).returning();
+    await tx.insert(orderStatusEvents).values({ tenantId, orderId, fromStatus: order.status, toStatus: to, changedByUserId: userId, reason: reason ?? null });
+    return updated;
+  });
+}
+
+export async function markPaid(tenantId: string, orderId: string, _userId: string): Promise<Order> {
+  return withTenant(tenantId, async (tx) => {
+    const [updated] = await tx.update(orders)
+      .set({ paymentStatus: "paid", updatedAt: new Date() })
+      .where(eq(orders.id, orderId)).returning();
+    if (!updated) throw new OrderNotFoundError();
+    return updated;
+  });
 }

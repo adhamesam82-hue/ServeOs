@@ -5,8 +5,8 @@ export {
 } from "./schema";
 export { nextStatuses, canTransition } from "./state-machine";
 export {
-  placeOrder, money,
-  type PlaceOrderInput, type PlaceOrderLine, type PlaceOrderResult,
+  placeOrder, money, getOrderByToken, getOrder, listOrders, pendingOrderCount, transitionStatus, markPaid,
+  type PlaceOrderInput, type PlaceOrderLine, type PlaceOrderResult, type ListOrdersOpts,
 } from "./service";
 export {
   OrderValidationError, BranchNotAcceptingOrdersError, AreaNotDeliverableError,
