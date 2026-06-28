@@ -3,7 +3,7 @@ import { db } from "@/db/client";
 import { tenants } from "@/server/tenancy/schema";
 import { seedDefaultPlans } from "@/server/subscription/plans.seed";
 import { startTrial } from "@/server/subscription/service";
-import { createBranch, updateBranchOrdering, createDeliveryArea } from "@/server/branches/service";
+import { createBranch, updateBranchOrdering } from "@/server/branches/service";
 import { createCategory, createProduct, updateProduct } from "@/server/catalog/service";
 import { placeOrder, getOrderByToken, getOrder, listOrders, transitionStatus, markPaid, pendingOrderCount } from "./service";
 import { InvalidTransitionError } from "./errors";

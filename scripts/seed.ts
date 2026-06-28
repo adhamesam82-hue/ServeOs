@@ -118,6 +118,44 @@ async function main() {
     await setVatRate(romaTenant.id, 14);
   }
 
+  // ── Sample orders (a couple across statuses) ────────────────────────────────
+  {
+    const { listProducts } = await import("../src/server/catalog/service");
+    const { listBranches, listDeliveryAreas } = await import("../src/server/branches/service");
+    const { placeOrder, transitionStatus, listOrders } = await import("../src/server/ordering/service");
+
+    const existing = await listOrders(romaTenant.id, { limit: 1 });
+    const branch = (await listBranches(romaTenant.id))[0];
+    const published = (await listProducts(romaTenant.id)).find((p) => p.isPublished);
+
+    if (existing.length === 0 && branch && published) {
+      // Fix the clock to mid-afternoon so the branch is always within hours,
+      // regardless of when the seed actually runs.
+      const now = new Date(); now.setHours(14, 0, 0, 0);
+      const areas = await listDeliveryAreas(romaTenant.id, branch.id);
+
+      if (areas[0]) {
+        const o1 = await placeOrder(romaTenant.id, {
+          branchId: branch.id, fulfillmentType: "delivery",
+          customerName: "Ahmed Samir", customerPhone: "01000000001",
+          areaId: areas[0].id, addressText: "12 St., Apt 4",
+          lines: [{ productId: published.id, quantity: 2, selectedOptionIds: [] }],
+          now,
+        });
+        await transitionStatus(romaTenant.id, o1.orderId, "confirmed", admin.id);
+        await transitionStatus(romaTenant.id, o1.orderId, "preparing", admin.id);
+      }
+
+      // A pickup order left pending so the dashboard shows a "new" order.
+      await placeOrder(romaTenant.id, {
+        branchId: branch.id, fulfillmentType: "pickup",
+        customerName: "Sara Hassan", customerPhone: "01000000002",
+        lines: [{ productId: published.id, quantity: 1, selectedOptionIds: [] }],
+        now,
+      });
+    }
+  }
+
   // ── Summary ─────────────────────────────────────────────────────────────────
   console.log(`
 Seed complete — users created:

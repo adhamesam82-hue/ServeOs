@@ -5,7 +5,7 @@ import { addLine, loadCart, removeLine, cartSubtotal, type Cart } from "./cart";
 
 type MenuProduct = PublishedMenu["categories"][number]["products"][number];
 
-export function StorefrontMenu({ menu, branchId, slug }: { menu: PublishedMenu; branchId: string | null; slug: string }) {
+export function StorefrontMenu({ menu, branchId, slug, orderingEnabled }: { menu: PublishedMenu; branchId: string | null; slug: string; orderingEnabled: boolean }) {
   const [cart, setCart] = useState<Cart>({ branchId: null, lines: [] });
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -29,27 +29,29 @@ export function StorefrontMenu({ menu, branchId, slug }: { menu: PublishedMenu; 
 
   return (
     <>
-      <button onClick={() => setDrawerOpen(true)} style={{ position: "fixed", insetInlineEnd: 16, top: 16, zIndex: 20, background: "#0f172a", color: "#fff", border: 0, borderRadius: 999, padding: "10px 16px", fontWeight: 700 }}>
-        🛒 {cart.lines.reduce((s, l) => s + l.quantity, 0)}
-      </button>
+      {orderingEnabled && (
+        <button onClick={() => setDrawerOpen(true)} style={{ position: "fixed", insetInlineEnd: 16, top: 16, zIndex: 20, background: "#0f172a", color: "#fff", border: 0, borderRadius: 999, padding: "10px 16px", fontWeight: 700 }}>
+          🛒 {cart.lines.reduce((s, l) => s + l.quantity, 0)}
+        </button>
+      )}
 
       {menu.categories.map((cat) => (
         <div key={cat.id} style={{ marginBottom: 32 }}>
           <h2 style={{ fontSize: 20, borderBottom: "2px solid currentColor", paddingBottom: 4 }}>{cat.nameEn} / {cat.nameAr}</h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 16, marginTop: 12 }}>
-            {cat.products.map((p) => <ProductCard key={p.id} product={p} onAdd={add} />)}
+            {cat.products.map((p) => <ProductCard key={p.id} product={p} onAdd={orderingEnabled ? add : undefined} />)}
           </div>
         </div>
       ))}
 
-      {drawerOpen && (
+      {orderingEnabled && drawerOpen && (
         <CartDrawer cart={cart} slug={slug} onClose={() => setDrawerOpen(false)} onRemove={(i) => setCart(removeLine(i))} />
       )}
     </>
   );
 }
 
-function ProductCard({ product, onAdd }: { product: MenuProduct; onAdd: (p: MenuProduct, ids: string[]) => void }) {
+function ProductCard({ product, onAdd }: { product: MenuProduct; onAdd?: (p: MenuProduct, ids: string[]) => void }) {
   const [selected, setSelected] = useState<string[]>(() => product.modifierGroups.flatMap((g) => g.options).filter((o) => o.isDefault).map((o) => o.id));
   const toggle = (gMax: number, groupOptionIds: string[], id: string) => {
     setSelected((prev) => {
@@ -66,7 +68,7 @@ function ProductCard({ product, onAdd }: { product: MenuProduct; onAdd: (p: Menu
       <div style={{ padding: 12 }}>
         <div style={{ fontWeight: 600 }}>{product.nameEn}</div>
         <div dir="rtl" style={{ color: "#6b7280", fontSize: 14 }}>{product.nameAr}</div>
-        {product.modifierGroups.map((g) => {
+        {onAdd && product.modifierGroups.map((g) => {
           const ids = g.options.map((o) => o.id);
           return (
             <div key={g.id} style={{ marginTop: 8 }}>
@@ -82,7 +84,7 @@ function ProductCard({ product, onAdd }: { product: MenuProduct; onAdd: (p: Menu
         })}
         <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <strong>{product.effectivePrice.toFixed(2)}</strong>
-          <button onClick={() => onAdd(product, selected)} style={{ background: "#f97316", color: "#fff", border: 0, borderRadius: 6, padding: "6px 14px", fontWeight: 600 }}>Add</button>
+          {onAdd && <button onClick={() => onAdd(product, selected)} style={{ background: "#f97316", color: "#fff", border: 0, borderRadius: 6, padding: "6px 14px", fontWeight: 600 }}>Add</button>}
         </div>
       </div>
     </div>

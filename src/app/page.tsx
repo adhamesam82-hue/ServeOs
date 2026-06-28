@@ -3,6 +3,7 @@ import { getTenantBySlug, isTenantServable } from "@/server/tenancy";
 import { getPublishedMenu } from "@/server/catalog/service";
 import { getActiveBanners } from "@/server/banners/service";
 import { listBranches } from "@/server/branches/service";
+import { hasFeature } from "@/server/entitlements/service";
 import { BranchSelector } from "./_components/BranchSelector";
 import { StorefrontMenu } from "./_components/StorefrontMenu";
 
@@ -31,10 +32,11 @@ export default async function Home({
 
     const { branch: branchId } = await searchParams;
 
-    const [banners, menu, branches] = await Promise.all([
+    const [banners, menu, branches, orderingEnabled] = await Promise.all([
       getActiveBanners(tenant.id),
       getPublishedMenu(tenant.id, branchId),
       listBranches(tenant.id),
+      hasFeature(tenant.id, "online_ordering"),
     ]);
 
     return (
@@ -58,7 +60,7 @@ export default async function Home({
         <section style={{ padding: "0 24px 32px" }}>
           <h1 style={{ fontSize: 28, marginBottom: 4 }}>{tenant.name}</h1>
           {menu.categories.length === 0 && <p>Menu coming soon.</p>}
-          <StorefrontMenu menu={menu} branchId={branchId ?? null} slug={slug!} />
+          <StorefrontMenu menu={menu} branchId={branchId ?? null} slug={slug!} orderingEnabled={orderingEnabled} />
         </section>
       </main>
     );

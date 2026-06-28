@@ -76,7 +76,9 @@ export async function placeOrder(tenantId: string, input: PlaceOrderInput): Prom
       for (const g of groups) {
         const count = selected.filter((o) => o.modifierGroupId === g.id).length;
         if (g.required && count < Math.max(1, g.minSelections)) throw new OrderValidationError("required modifier missing");
-        if (count < g.minSelections) throw new OrderValidationError("too few modifier selections");
+        // minSelections only binds once the (optional) group has at least one
+        // pick; an untouched optional group is allowed.
+        if (count > 0 && count < g.minSelections) throw new OrderValidationError("too few modifier selections");
         if (count > g.maxSelections) throw new OrderValidationError("too many modifier selections");
       }
 
